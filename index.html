@@ -57,15 +57,10 @@
   /* whatsapp float */
   .wa-float { position:fixed; right:1.25rem; bottom:1.25rem; z-index:60; background:#25D366; color:#fff; width:56px; height:56px; border-radius:9999px; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,.35); }
 
-  /* GSAP — initial states (avoid FOUC flash) */
-  .anim-line { display:block; overflow:hidden; }
-  .anim-line > .inner { display:block; transform: translateY(110%); will-change: transform; }
-  .anim-char { display:inline-block; transform: translateY(110%) skewY(8deg); will-change: transform; }
-  .anim-up   { opacity:0; transform: translateY(40px); will-change: transform, opacity; }
-  .anim-fade { opacity:0; will-change: opacity; }
-  .anim-clip { clip-path: inset(0 0 100% 0); will-change: clip-path; }
-  .anim-photo img { transform: scale(1.15); will-change: transform; }
-  .anim-num  { display:inline-block; }
+  /* GSAP mask containers — content visible by default; GSAP applies hidden state at runtime */
+  .anim-mask { display: inline-block; overflow: hidden; vertical-align: top; }
+  .anim-mask > .inner { display: inline-block; will-change: transform; }
+  .gsap-ready .anim-clip { clip-path: inset(0 0 100% 0); will-change: clip-path; }
   /* Hazard "marching" */
   .hazard { background-size: 68px 68px; }
   @media (prefers-reduced-motion: no-preference) {
@@ -648,187 +643,176 @@
 
   if (!window.gsap) return;
   gsap.registerPlugin(ScrollTrigger);
+  document.documentElement.classList.add('gsap-ready');
 
-  // ---- Splitters ----
-  // Wrap each char of an element in spans (preserve spaces)
-  const splitChars = (el) => {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) {
+    document.documentElement.classList.remove('gsap-ready');
+    return;
+  }
+
+  // ---- Splitter: wraps each unit (word | char) in a mask container ----
+  // Returns the inner elements ready to be animated with from()/to()
+  const splitMask = (el, mode) => {
+    if (!el || el.dataset.split === '1') return el.querySelectorAll('.anim-mask > .inner');
     const text = el.textContent;
     el.textContent = '';
     const frag = document.createDocumentFragment();
-    [...text].forEach(ch => {
-      if (ch === ' ') { frag.appendChild(document.createTextNode(' ')); return; }
-      const s = document.createElement('span');
-      s.className = 'anim-char';
-      s.textContent = ch;
-      frag.appendChild(s);
-    });
-    el.appendChild(frag);
-    return el.querySelectorAll('.anim-char');
-  };
-  // Wrap each word, line-by-line approximation: just wrap every word in mask
-  const splitWords = (el) => {
-    const words = el.textContent.split(/(\s+)/);
-    el.textContent = '';
-    const frag = document.createDocumentFragment();
-    words.forEach(w => {
-      if (/^\s+$/.test(w)) { frag.appendChild(document.createTextNode(w)); return; }
+    const units = mode === 'chars'
+      ? [...text]
+      : text.split(/(\s+)/);
+    units.forEach(u => {
+      if (u === '' ) return;
+      if (/^\s+$/.test(u)) { frag.appendChild(document.createTextNode(u)); return; }
       const wrap = document.createElement('span');
-      wrap.className = 'anim-line';
-      wrap.style.display = 'inline-block';
+      wrap.className = 'anim-mask';
       const inner = document.createElement('span');
       inner.className = 'inner';
-      inner.textContent = w;
+      inner.textContent = u;
       wrap.appendChild(inner);
       frag.appendChild(wrap);
     });
     el.appendChild(frag);
-    return el.querySelectorAll('.anim-line .inner');
+    el.dataset.split = '1';
+    return el.querySelectorAll('.anim-mask > .inner');
   };
 
-  const mm = gsap.matchMedia();
+  // ---- HERO (runs immediately on load) ----
+  const heroH1 = document.querySelector('section h1');
+  if (heroH1) {
+    const inners = splitMask(heroH1, 'words');
+    gsap.timeline({ delay: .1 })
+      .from(inners,
+        { yPercent: 110, duration: 1.1, ease: 'expo.out', stagger: .035 })
+      .from('section .mono.text-jr-yellow',
+        { y: 20, opacity: 0, duration: .6, ease: 'power3.out' }, .1)
+      .from('section p.text-lg, section p.text-xl',
+        { y: 20, opacity: 0, duration: .6, ease: 'power3.out' }, .4)
+      .from('section .btn-primary, section .btn-outline',
+        { y: 20, opacity: 0, duration: .5, ease: 'power3.out', stagger: .08 }, .55);
+  }
 
-  mm.add({
-    isMotion: '(prefers-reduced-motion: no-preference)',
-    isReduced:'(prefers-reduced-motion: reduce)'
-  }, (ctx) => {
-    const { isMotion } = ctx.conditions;
-
-    if (!isMotion) {
-      // Reveal everything immediately for reduced-motion
-      gsap.set('.anim-up, .anim-fade', { clearProps:'all', opacity:1, y:0 });
-      gsap.set('.anim-clip', { clipPath:'inset(0 0 0 0)' });
-      gsap.set('.anim-photo img', { scale:1 });
-      return;
-    }
-
-    // ---- HERO ----
-    const heroH1 = document.querySelector('section h1');
-    if (heroH1) {
-      // Split heading into words with mask
-      const innerEls = splitWords(heroH1);
-      const tl = gsap.timeline({ delay: .15 });
-      tl.to(innerEls, { yPercent: 0, duration: 1.1, ease: 'expo.out', stagger: .04 })
-        .from('section .mono.text-jr-yellow', { y: 20, opacity: 0, duration: .6, ease: 'power3.out' }, .1)
-        .from('section .text-white\\/80, section p.text-lg.md\\:text-xl', { y: 20, opacity: 0, duration: .6, ease: 'power3.out' }, .4)
-        .from('section .btn-primary, section .btn-outline', { y: 20, opacity: 0, duration: .5, ease: 'power3.out', stagger: .08 }, .55);
-    }
-
-    // Hero photo: clip reveal + scale to 1
-    const heroPhotoWrap = document.querySelector('.aspect-\\[4\\/5\\]');
-    if (heroPhotoWrap) {
-      heroPhotoWrap.classList.add('anim-clip');
-      const img = heroPhotoWrap.querySelector('img');
-      gsap.timeline({ delay: .3 })
-        .to(heroPhotoWrap, { clipPath: 'inset(0 0 0 0)', duration: 1.2, ease: 'expo.out' })
-        .to(img, { scale: 1, duration: 1.6, ease: 'expo.out' }, 0);
-
-      // Parallax scroll
-      gsap.to(img, {
-        yPercent: -10, ease: 'none',
-        scrollTrigger: { trigger: heroPhotoWrap, start: 'top bottom', end: 'bottom top', scrub: true }
-      });
-
-      // Sello rotación pequeña sutil
-      const sello = heroPhotoWrap.querySelector('.rounded-full');
-      if (sello) gsap.to(sello, { rotate: '-=12', duration: 1.4, ease: 'expo.out', delay: .8 });
-    }
-
-    // ---- Section H2 mask reveal ----
-    document.querySelectorAll('h2.h2-fluid, h2.display').forEach(h => {
-      const inners = splitWords(h);
-      gsap.to(inners, {
-        yPercent: 0, duration: .9, ease: 'expo.out', stagger: .03,
-        scrollTrigger: { trigger: h, start: 'top 85%' }
-      });
+  // Hero photo
+  const heroPhotoWrap = document.querySelector('.aspect-\\[4\\/5\\]');
+  if (heroPhotoWrap) {
+    const img = heroPhotoWrap.querySelector('img');
+    gsap.timeline({ delay: .3 })
+      .from(heroPhotoWrap, { clipPath: 'inset(0 0 100% 0)', duration: 1.2, ease: 'expo.out' })
+      .from(img, { scale: 1.15, duration: 1.6, ease: 'expo.out' }, 0);
+    gsap.to(img, {
+      yPercent: -10, ease: 'none',
+      scrollTrigger: { trigger: heroPhotoWrap, start: 'top bottom', end: 'bottom top', scrub: true }
     });
+    const sello = heroPhotoWrap.querySelector('.rounded-full');
+    if (sello) gsap.from(sello, { rotate: 35, scale: .6, opacity: 0, duration: 1.4, ease: 'back.out(1.6)', delay: .9 });
+  }
 
-    // ---- Generic anim-up reveal for cards/blocks ----
-    const upTargets = [
-      '#para-quien .grid > div',
-      '#areas .grid > a',
-      '#modalidades .grid > div',
-      '#testimonios article',
-      '#trayectoria .grid.grid-cols-2 > div',
-      'section .border-t-2.border-jr-black > div',
-    ];
-    upTargets.forEach(sel => {
-      const els = document.querySelectorAll(sel);
-      if (!els.length) return;
-      gsap.from(els, {
-        y: 50, opacity: 0, duration: .8, ease: 'power3.out', stagger: .08,
-        scrollTrigger: { trigger: els[0].parentElement, start: 'top 80%' }
-      });
-    });
-
-    // ---- Number count up (trayectoria) ----
-    document.querySelectorAll('#trayectoria .num-fluid').forEach(el => {
-      const raw = el.textContent.trim();
-      const m = raw.match(/^([+]?)(\d+)$/);
-      if (!m) return;
-      const prefix = m[1] || '';
-      const target = parseInt(m[2], 10);
-      const obj = { v: 0 };
-      el.textContent = prefix + '0';
-      gsap.to(obj, {
-        v: target, duration: 1.6, ease: 'power3.out',
-        onUpdate: () => { el.textContent = prefix + Math.round(obj.v); },
-        scrollTrigger: { trigger: el, start: 'top 85%' }
-      });
-    });
-
-    // ---- "Cómo enseño" big numbers pop ----
-    document.querySelectorAll('section .display.num-fluid').forEach(el => {
-      if (el.closest('#trayectoria')) return;
-      gsap.from(el, {
-        scale: .6, opacity: 0, duration: 1, ease: 'expo.out',
-        scrollTrigger: { trigger: el, start: 'top 85%' }
-      });
-    });
-
-    // ---- Sobre el formador photo (square) ----
-    const formadorPhoto = document.querySelector('.aspect-square');
-    if (formadorPhoto) {
-      formadorPhoto.classList.add('anim-clip');
-      gsap.to(formadorPhoto, {
-        clipPath: 'inset(0 0 0 0)', duration: 1.1, ease: 'expo.out',
-        scrollTrigger: { trigger: formadorPhoto, start: 'top 85%' }
-      });
-      const img2 = formadorPhoto.querySelector('img');
-      if (img2) gsap.from(img2, {
-        scale: 1.2, duration: 1.6, ease: 'expo.out',
-        scrollTrigger: { trigger: formadorPhoto, start: 'top 85%' }
-      });
-    }
-
-    // ---- CTA final char reveal ----
-    const ctaH2 = document.querySelector('#cta-final h2');
-    if (ctaH2) {
-      const chars = splitChars(ctaH2);
-      gsap.to(chars, {
-        yPercent: 0, skewY: 0, duration: 1, ease: 'expo.out', stagger: .035,
-        scrollTrigger: { trigger: ctaH2, start: 'top 80%' }
-      });
-    }
-
-    // ---- FAQ subtle stagger ----
-    gsap.from('#faq details', {
-      x: -20, opacity: 0, duration: .6, ease: 'power3.out', stagger: .06,
-      scrollTrigger: { trigger: '#faq', start: 'top 75%' }
-    });
-
-    // ---- Footer fade ----
-    gsap.from('footer', { opacity: 0, y: 30, duration: .8, ease: 'power3.out',
-      scrollTrigger: { trigger: 'footer', start: 'top 90%' } });
-
-    // ---- Background grid parallax in trayectoria ----
-    gsap.to('#trayectoria .grid-tech', {
-      backgroundPosition: '0 -200px', ease: 'none',
-      scrollTrigger: { trigger: '#trayectoria', start: 'top bottom', end: 'bottom top', scrub: true }
+  // ---- H2 mask reveal on scroll ----
+  document.querySelectorAll('h2').forEach(h => {
+    if (h.closest('#cta-final')) return; // CTA gets char split below
+    const inners = splitMask(h, 'words');
+    gsap.from(inners, {
+      yPercent: 110, duration: .9, ease: 'expo.out', stagger: .035,
+      scrollTrigger: { trigger: h, start: 'top 88%' }
     });
   });
 
-  // Refresh after fonts load (avoid layout shift breaking triggers)
-  document.fonts && document.fonts.ready.then(() => ScrollTrigger.refresh());
+  // ---- Cards / blocks stagger ----
+  const upTargets = [
+    '#para-quien .grid > div',
+    '#areas .grid > a',
+    '#modalidades .grid > div',
+    '#testimonios article',
+    '#trayectoria .grid.grid-cols-2 > div',
+  ];
+  upTargets.forEach(sel => {
+    const els = document.querySelectorAll(sel);
+    if (!els.length) return;
+    gsap.from(els, {
+      y: 50, opacity: 0, duration: .8, ease: 'power3.out', stagger: .08,
+      scrollTrigger: { trigger: els[0].parentElement, start: 'top 82%' }
+    });
+  });
+
+  // "Cómo enseño" 4 column blocks
+  gsap.from('section .border-t-2.border-jr-black > div', {
+    y: 60, opacity: 0, duration: .9, ease: 'power3.out', stagger: .1,
+    scrollTrigger: { trigger: 'section .border-t-2.border-jr-black', start: 'top 80%' }
+  });
+
+  // ---- Count-up cifras ----
+  document.querySelectorAll('#trayectoria .num-fluid').forEach(el => {
+    const raw = el.textContent.trim();
+    const m = raw.match(/^([+]?)(\d+)$/);
+    if (!m) return;
+    const prefix = m[1] || '';
+    const target = parseInt(m[2], 10);
+    const obj = { v: 0 };
+    ScrollTrigger.create({
+      trigger: el, start: 'top 88%', once: true,
+      onEnter: () => {
+        gsap.to(obj, {
+          v: target, duration: 1.6, ease: 'power3.out',
+          onUpdate: () => { el.textContent = prefix + Math.round(obj.v); }
+        });
+      }
+    });
+  });
+
+  // ---- "Cómo enseño" big step numbers pop ----
+  document.querySelectorAll('.display.num-fluid').forEach(el => {
+    if (el.closest('#trayectoria')) return;
+    gsap.from(el, {
+      scale: .5, opacity: 0, duration: 1, ease: 'back.out(1.6)',
+      scrollTrigger: { trigger: el, start: 'top 88%' }
+    });
+  });
+
+  // ---- "Tu formador" photo ----
+  const formadorPhoto = document.querySelector('.aspect-square');
+  if (formadorPhoto) {
+    const img2 = formadorPhoto.querySelector('img');
+    gsap.from(formadorPhoto, {
+      clipPath: 'inset(0 0 100% 0)', duration: 1.1, ease: 'expo.out',
+      scrollTrigger: { trigger: formadorPhoto, start: 'top 85%' }
+    });
+    if (img2) gsap.from(img2, {
+      scale: 1.25, duration: 1.6, ease: 'expo.out',
+      scrollTrigger: { trigger: formadorPhoto, start: 'top 85%' }
+    });
+  }
+
+  // ---- CTA final · char-by-char ----
+  const ctaH2 = document.querySelector('#cta-final h2');
+  if (ctaH2) {
+    const chars = splitMask(ctaH2, 'chars');
+    gsap.from(chars, {
+      yPercent: 110, duration: 1, ease: 'expo.out', stagger: .04,
+      scrollTrigger: { trigger: ctaH2, start: 'top 85%' }
+    });
+  }
+
+  // ---- FAQ stagger ----
+  gsap.from('#faq details', {
+    x: -20, opacity: 0, duration: .6, ease: 'power3.out', stagger: .06,
+    scrollTrigger: { trigger: '#faq', start: 'top 78%' }
+  });
+
+  // ---- Footer fade ----
+  gsap.from('footer', {
+    opacity: 0, y: 30, duration: .8, ease: 'power3.out',
+    scrollTrigger: { trigger: 'footer', start: 'top 92%' }
+  });
+
+  // ---- Trayectoria grid parallax ----
+  gsap.to('#trayectoria .grid-tech', {
+    backgroundPosition: '0 -200px', ease: 'none',
+    scrollTrigger: { trigger: '#trayectoria', start: 'top bottom', end: 'bottom top', scrub: true }
+  });
+
+  // Refresh once everything (incl. fonts) is settled
+  if (document.fonts) document.fonts.ready.then(() => ScrollTrigger.refresh());
+  window.addEventListener('load', () => ScrollTrigger.refresh());
 })();
 </script>
 
