@@ -58,7 +58,9 @@
   .wa-float { position:fixed; right:1.25rem; bottom:1.25rem; z-index:60; background:#25D366; color:#fff; width:56px; height:56px; border-radius:9999px; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,.35); }
 
   /* GSAP mask containers — content visible by default; GSAP applies hidden state at runtime */
-  .anim-mask { display: inline-block; overflow: hidden; vertical-align: top; }
+  /* line-height holgado + padding-top = espacio para tildes/ñ durante el reveal */
+  .anim-mask { display: inline-block; overflow: hidden; vertical-align: bottom; line-height: 1.05; padding-top: .12em; margin-top: -.12em; }
+  .anim-mask.unmasked { overflow: visible; }
   .anim-mask > .inner { display: inline-block; will-change: transform; }
   .gsap-ready .anim-clip { clip-path: inset(0 0 100% 0); will-change: clip-path; }
   /* Hazard "marching" */
@@ -686,13 +688,22 @@
     return inners;
   };
 
+  // Helper: reveal masked inners + libera overflow al final (para que tildes/ñ no se recorten)
+  const revealMasked = (inners, opts = {}) => {
+    if (!inners || !inners.length) return;
+    const masks = inners.map(i => i.parentElement);
+    const onComplete = () => masks.forEach(m => m && m.classList.add('unmasked'));
+    return gsap.from(inners, Object.assign({
+      yPercent: 110, duration: .9, ease: 'expo.out', stagger: .035
+    }, opts, { onComplete }));
+  };
+
   // ---- HERO (runs immediately on load) ----
   const heroH1 = document.querySelector('section h1');
   if (heroH1) {
     const inners = splitMask(heroH1, 'words');
-    gsap.timeline({ delay: .1 })
-      .from(inners,
-        { yPercent: 110, duration: 1.1, ease: 'expo.out', stagger: .035 })
+    revealMasked(inners, { duration: 1.1, stagger: .035, delay: .15 });
+    gsap.timeline({ delay: .15 })
       .from('section .mono.text-jr-yellow',
         { y: 20, opacity: 0, duration: .6, ease: 'power3.out' }, .1)
       .from('section p.text-lg, section p.text-xl',
@@ -720,8 +731,7 @@
   document.querySelectorAll('h2').forEach(h => {
     if (h.closest('#cta-final')) return; // CTA gets char split below
     const inners = splitMask(h, 'words');
-    gsap.from(inners, {
-      yPercent: 110, duration: .9, ease: 'expo.out', stagger: .035,
+    revealMasked(inners, {
       scrollTrigger: { trigger: h, start: 'top 88%' }
     });
   });
@@ -795,8 +805,8 @@
   const ctaH2 = document.querySelector('#cta-final h2');
   if (ctaH2) {
     const chars = splitMask(ctaH2, 'chars');
-    gsap.from(chars, {
-      yPercent: 110, duration: 1, ease: 'expo.out', stagger: .04,
+    revealMasked(chars, {
+      duration: 1, stagger: .04,
       scrollTrigger: { trigger: ctaH2, start: 'top 85%' }
     });
   }
