@@ -137,8 +137,7 @@
           ▸ Aprende el oficio de quien lo trabaja
         </p>
         <h1 class="display h1-fluid uppercase">
-          Aprende el oficio de las <span class="text-jr-yellow">reformas</span> con quien lleva
-          <span class="text-jr-yellow">28 años</span> haciéndolo
+          Aprende <span class="text-jr-yellow">reformas integrales</span> y construcción con un profesional con <span class="text-jr-yellow">28 años en obra</span>
         </h1>
         <p class="mt-8 text-lg md:text-xl text-white/80 max-w-2xl">
           Cuartos de baño, cocinas, alicatado, pladur, presupuestos y gestión de obra. Online y presencial. Sin teoría inútil.
@@ -651,30 +650,40 @@
     return;
   }
 
-  // ---- Splitter: wraps each unit (word | char) in a mask container ----
-  // Returns the inner elements ready to be animated with from()/to()
-  const splitMask = (el, mode) => {
-    if (!el || el.dataset.split === '1') return el.querySelectorAll('.anim-mask > .inner');
-    const text = el.textContent;
-    el.textContent = '';
-    const frag = document.createDocumentFragment();
-    const units = mode === 'chars'
-      ? [...text]
-      : text.split(/(\s+)/);
-    units.forEach(u => {
-      if (u === '' ) return;
-      if (/^\s+$/.test(u)) { frag.appendChild(document.createTextNode(u)); return; }
-      const wrap = document.createElement('span');
-      wrap.className = 'anim-mask';
-      const inner = document.createElement('span');
-      inner.className = 'inner';
-      inner.textContent = u;
-      wrap.appendChild(inner);
-      frag.appendChild(wrap);
-    });
-    el.appendChild(frag);
-    el.dataset.split = '1';
-    return el.querySelectorAll('.anim-mask > .inner');
+  // ---- Splitter: walks children, splits TEXT NODES into masked words/chars,
+  // preserves nested elements (e.g. <span class="text-jr-yellow">) and their styles.
+  const splitMask = (root, mode) => {
+    if (!root || root.dataset.split === '1') return root.querySelectorAll('.anim-mask > .inner');
+    const inners = [];
+    const splitText = (text) => {
+      const frag = document.createDocumentFragment();
+      const units = mode === 'chars' ? [...text] : text.split(/(\s+)/);
+      units.forEach(u => {
+        if (u === '') return;
+        if (/^\s+$/.test(u)) { frag.appendChild(document.createTextNode(u)); return; }
+        const wrap = document.createElement('span');
+        wrap.className = 'anim-mask';
+        const inner = document.createElement('span');
+        inner.className = 'inner';
+        inner.textContent = u;
+        wrap.appendChild(inner);
+        frag.appendChild(wrap);
+        inners.push(inner);
+      });
+      return frag;
+    };
+    const walk = (node) => {
+      [...node.childNodes].forEach(child => {
+        if (child.nodeType === 3) {
+          child.replaceWith(splitText(child.nodeValue));
+        } else if (child.nodeType === 1) {
+          walk(child);
+        }
+      });
+    };
+    walk(root);
+    root.dataset.split = '1';
+    return inners;
   };
 
   // ---- HERO (runs immediately on load) ----
